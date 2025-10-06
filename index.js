@@ -10,6 +10,9 @@ app.use(bodyParser.json());
 
 const LAST_RESULT = "./latest.json";
 
+// Флаг, который будет контролировать, доступен ли текст
+let isReadyToFetchText = false;
+
 app.get("/", (req, res) => {
   res.send("✅ ScreenApp Webhook is running");
 });
@@ -20,24 +23,24 @@ app.post("/webhook", async (req, res) => {
 
   let content = {};
   try {
-    const summaryBlock = data.file?.systemPromptResponses?.CHAPTERS?.responseText;
-    if (summaryBlock) {
-      const summaryJson = JSON.parse(summaryBlock);
-      content.summary = summaryJson;
-      console.log("🧠 Summary found.");
-    } else if (data.file?.transcriptUrl) {
+    // Проверяем, есть ли ссылка на транскрипт
+    if (data.file?.transcriptUrl) {
       console.log("🗒️ Downloading transcript...");
       const resp = await fetch(data.file.transcriptUrl);
       const transcript = await resp.json();
       content.transcript = transcript.text || "(no text)";
       console.log("🗣️ Transcript saved.");
     } else {
-      content.error = "No summary or transcript found.";
-      console.log("⚠️ No summary or transcript in payload.");
+      content.error = "No transcript found.";
+      console.log("⚠️ No transcript in payload.");
     }
 
     // сохраняем последний результат
     fs.writeFileSync(LAST_RESULT, JSON.stringify(content, null, 2));
+
+    // Устанавливаем флаг в true, чтобы текст был доступен для запроса
+    isReadyToFetchText = true;
+
     res.status(200).send({ success: true });
   } catch (err) {
     console.error("❌ Error:", err);
@@ -47,10 +50,16 @@ app.post("/webhook", async (req, res) => {
 
 // 🔍 Просмотр последнего результата
 app.get("/latest", (req, res) => {
-  if (fs.existsSync(LAST_RESULT)) {
-    res.sendFile(LAST_RESULT, { root: "." });
+  if (isReadyToFetchText) {
+    if (fs.existsSync(LAST_RESULT)) {
+      res.sendFile(LAST_RESULT, { root: "." });
+    } else {
+      res.status(404).send({ error: "No data yet." });
+    }
+    // После успешного получения данных, сбрасываем флаг
+    isReadyToFetchText = false;
   } else {
-    res.status(404).send({ error: "No data yet." });
+    res.status(403).send({ error: "Data is not ready yet." });
   }
 });
 
