@@ -78,4 +78,10 @@ app.get("/latest", (req, res) => {
   }
 });
 
+app.get("/share", (req, res) => {
+  console.log("👋 Привет!");
+  res.status(200).send({ success: true, message: "Привет!" });
+});
+
+
 app.listen(PORT, () => console.log(`🚀 Webhook server running on port ${PORT}`));
