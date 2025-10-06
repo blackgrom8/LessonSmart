@@ -3,7 +3,8 @@ import fetch from "node-fetch";
 import bodyParser from "body-parser";
 import fs from "fs";
 import admin from "firebase-admin"; // Добавляем Firebase
-import nodemailer from "nodemailer"; // Добавляем nodemailer
+import { Resend } from "resend";
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -35,16 +36,6 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
 admin.initializeApp({ credential });
 const db = admin.firestore();
 
-// Настройка транспорта для отправки писем
-const transporter = nodemailer.createTransport({
-  host: 'smtp.mail.ru',
-  port: 465,
-  secure: true,
-  auth: {
-    user: 'mega.nahimov@mail.ru',
-    pass: '09OPPnVdd88bs7HgyLg2',
-  },
-});
 
 app.get("/", (req, res) => {
   res.send("✅ ScreenApp Webhook is running");
@@ -104,48 +95,52 @@ app.get("/latest", (req, res) => {
 // Новый маршрут /share для рассылки писем всем студентам
 app.get("/share", async (req, res) => {
   try {
-    // Чтение текста из файла latest.json
+    // Проверяем наличие latest.json
     if (!fs.existsSync(LAST_RESULT)) {
       return res.status(404).send({ error: "No data to send yet." });
     }
+
     const content = JSON.parse(fs.readFileSync(LAST_RESULT));
 
-    // Получаем все документы из коллекции "students"
+    // Получаем всех студентов из Firestore
     const snapshot = await db.collection("students").get();
-
     if (snapshot.empty) {
       console.log("⚠️ No students found in Firestore.");
       return res.status(404).send({ error: "No students found." });
     }
 
+    // Отправляем письма через Resend API
     const emailPromises = snapshot.docs.map(async (doc) => {
       const data = doc.data();
       const email = data.email;
+
       if (email) {
         console.log("📧 Sending email to:", email);
 
-        const mailOptions = {
-          from: '"Almavalley Hub" <mega.nahimov@mail.ru>',
-          to: email,
-          subject: 'Important Update from Alma Valley',
-          text: content.transcript || 'No content available.', // Используем текст из файла
-        };
-
         try {
-          const info = await transporter.sendMail(mailOptions);
-          console.log(`✅ Email sent to: ${email} — ${info.response}`);
+          const { data: result, error } = await resend.emails.send({
+            from: '"Almavalley Hub" <onboarding@resend.dev>', // можно заменить на свой подтверждённый адрес
+            to: email,
+            subject: "Important Update from Alma Valley",
+            text: content.transcript || "No content available.",
+          });
+
+          if (error) {
+            console.error(`❌ Error sending to ${email}:`, error);
+          } else {
+            console.log(`✅ Email sent to ${email} — ID: ${result.id}`);
+          }
         } catch (err) {
-          console.error(`❌ Error sending email to ${email}:`, err.message);
+          console.error(`❌ Failed to send email to ${email}:`, err.message);
         }
       }
     });
 
-    // Ждем, пока все письма будут отправлены
     await Promise.all(emailPromises);
 
-    res.status(200).send({ success: true, message: "Emails sent successfully." });
+    res.status(200).send({ success: true, message: "Emails sent successfully via Resend." });
   } catch (err) {
-    console.error("❌ Error sending emails:", err);
+    console.error("❌ Error in /share:", err);
     res.status(500).send({ success: false, error: err.message });
   }
 });
