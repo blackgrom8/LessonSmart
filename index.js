@@ -3,6 +3,7 @@ import fetch from "node-fetch";
 import bodyParser from "body-parser";
 import fs from "fs";
 import admin from "firebase-admin"; // Добавляем Firebase
+import nodemailer from "nodemailer"; // Добавляем nodemailer
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -33,6 +34,17 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
 
 admin.initializeApp({ credential });
 const db = admin.firestore();
+
+// Настройка транспорта для отправки писем
+const transporter = nodemailer.createTransport({
+  host: 'smtp.mail.ru',
+  port: 465,
+  secure: true,
+  auth: {
+    user: 'mega.nahimov@mail.ru',
+    pass: '09OPPnVdd88bs7HgyLg2',
+  },
+});
 
 app.get("/", (req, res) => {
   res.send("✅ ScreenApp Webhook is running");
@@ -89,9 +101,15 @@ app.get("/latest", (req, res) => {
   }
 });
 
-// Новый маршрут /share, который выводит все email из Firestore
+// Новый маршрут /share для рассылки писем всем студентам
 app.get("/share", async (req, res) => {
   try {
+    // Чтение текста из файла latest.json
+    if (!fs.existsSync(LAST_RESULT)) {
+      return res.status(404).send({ error: "No data to send yet." });
+    }
+    const content = JSON.parse(fs.readFileSync(LAST_RESULT));
+
     // Получаем все документы из коллекции "students"
     const snapshot = await db.collection("students").get();
 
@@ -100,17 +118,34 @@ app.get("/share", async (req, res) => {
       return res.status(404).send({ error: "No students found." });
     }
 
-    // Выводим все email в консоль
-    snapshot.forEach(doc => {
+    const emailPromises = snapshot.docs.map(async (doc) => {
       const data = doc.data();
-      if (data.email) {
-        console.log("📧 Email:", data.email);
+      const email = data.email;
+      if (email) {
+        console.log("📧 Sending email to:", email);
+
+        const mailOptions = {
+          from: '"Almavalley Hub" <mega.nahimov@mail.ru>',
+          to: email,
+          subject: 'Important Update from Alma Valley',
+          text: content.transcript || 'No content available.', // Используем текст из файла
+        };
+
+        try {
+          const info = await transporter.sendMail(mailOptions);
+          console.log(`✅ Email sent to: ${email} — ${info.response}`);
+        } catch (err) {
+          console.error(`❌ Error sending email to ${email}:`, err.message);
+        }
       }
     });
 
-    res.status(200).send({ success: true, message: "Emails logged to console." });
+    // Ждем, пока все письма будут отправлены
+    await Promise.all(emailPromises);
+
+    res.status(200).send({ success: true, message: "Emails sent successfully." });
   } catch (err) {
-    console.error("❌ Error fetching emails:", err);
+    console.error("❌ Error sending emails:", err);
     res.status(500).send({ success: false, error: err.message });
   }
 });
