@@ -2,7 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 import bodyParser from "body-parser";
 import fs from "fs";
-import admin from "firebase-admin"; // Добавляем Firebase
+import admin from "firebase-admin"; 
 import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
