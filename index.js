@@ -119,7 +119,7 @@ app.get("/share", async (req, res) => {
 
         try {
           const { data: result, error } = await resend.emails.send({
-            from: '"Almavalley Hub" <onboarding@resend.dev>', // можно заменить на свой подтверждённый адрес
+            from: '"Almavalley Hub" <noreply@smartlesson.online>', // можно заменить на свой подтверждённый адрес
             to: email,
             subject: "Important Update from Alma Valley",
             text: content.transcript || "No content available.",
@@ -146,3 +146,4 @@ app.get("/share", async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 Webhook server running on port ${PORT}`));
+
