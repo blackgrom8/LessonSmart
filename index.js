@@ -17,7 +17,7 @@ const LAST_RESULT = "./latest.json";
 let webhookCounter = 0;
 let isReadyToFetchText = false;
 
-// 🔐 Firebase init
+// 🔐 Firebase  init
 let credential;
 if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   try {
@@ -169,4 +169,5 @@ app.get("/share", async (req, res) => {
 
 // 🚀 Запуск сервера
 app.listen(PORT, () => console.log(`🚀 Webhook server running on port ${PORT}`));
+
 
