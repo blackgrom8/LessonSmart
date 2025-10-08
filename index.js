@@ -34,7 +34,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
 admin.initializeApp({ credential });
 const db = admin.firestore();
 
-// ✨ Функция для аналитической выжимки текста
+// ✨ Функция для аналитической выжимки  текста
 async function summarizeText(text) {
   const prompt = `
 Проанализируй и сделай содержательную выжимку из текста на русском языке. 
@@ -169,3 +169,4 @@ app.get("/share", async (req, res) => {
 
 // 🚀 Запуск сервера
 app.listen(PORT, () => console.log(`🚀 Webhook server running on port ${PORT}`));
+
