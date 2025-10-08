@@ -92,51 +92,49 @@ app.get("/latest", (req, res) => {
   }
 });
 
-// Новый маршрут /share для рассылки писем всем студентам
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 app.get("/share", async (req, res) => {
   try {
-    // Проверяем наличие latest.json
     if (!fs.existsSync(LAST_RESULT)) {
       return res.status(404).send({ error: "No data to send yet." });
     }
 
     const content = JSON.parse(fs.readFileSync(LAST_RESULT));
-
-    // Получаем всех студентов из Firestore
     const snapshot = await db.collection("students").get();
+
     if (snapshot.empty) {
       console.log("⚠️ No students found in Firestore.");
       return res.status(404).send({ error: "No students found." });
     }
 
-    // Отправляем письма через Resend API
-    const emailPromises = snapshot.docs.map(async (doc) => {
-      const data = doc.data();
-      const email = data.email;
+    for (const doc of snapshot.docs) {
+      const { email } = doc.data();
+      if (!email) continue;
 
-      if (email) {
-        console.log("📧 Sending email to:", email);
+      console.log("📧 Sending email to:", email);
 
-        try {
-          const { data: result, error } = await resend.emails.send({
-            from: '"Almavalley Hub" <noreply@smartlesson.online>', // можно заменить на свой подтверждённый адрес
-            to: email,
-            subject: "Important Update from Alma Valley",
-            text: content.transcript || "No content available.",
-          });
+      try {
+        const { data: result, error } = await resend.emails.send({
+          from: '"Almavalley Hub" <noreply@smartlesson.online>',
+          to: email,
+          subject: "Important Update from Alma Valley",
+          text: content.transcript || "No content available.",
+        });
 
-          if (error) {
-            console.error(`❌ Error sending to ${email}:`, error);
-          } else {
-            console.log(`✅ Email sent to ${email} — ID: ${result.id}`);
-          }
-        } catch (err) {
-          console.error(`❌ Failed to send email to ${email}:`, err.message);
+        if (error) {
+          console.error(`❌ Error sending to ${email}:`, error);
+        } else {
+          console.log(`✅ Email sent to ${email} — ID: ${result.id}`);
         }
+      } catch (err) {
+        console.error(`❌ Failed to send email to ${email}:`, err.message);
       }
-    });
 
-    await Promise.all(emailPromises);
+      await sleep(500); // ⏱️ пауза 500 мс между письмами
+    }
 
     res.status(200).send({ success: true, message: "Emails sent successfully via Resend." });
   } catch (err) {
@@ -145,5 +143,7 @@ app.get("/share", async (req, res) => {
   }
 });
 
+
 app.listen(PORT, () => console.log(`🚀 Webhook server running on port ${PORT}`));
+
 
