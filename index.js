@@ -2,24 +2,23 @@ import express from "express";
 import fetch from "node-fetch";
 import bodyParser from "body-parser";
 import fs from "fs";
-import admin from "firebase-admin"; 
+import admin from "firebase-admin";
 import { Resend } from "resend";
-const resend = new Resend(process.env.RESEND_API_KEY);
+import OpenAI from "openai";
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-
 app.use(bodyParser.json());
 
-const LAST_RESULT = "./latest.json";
+const resend = new Resend(process.env.RESEND_API_KEY);
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Счетчик вебхуков
+const LAST_RESULT = "./latest.json";
 let webhookCounter = 0;
 let isReadyToFetchText = false;
 
-// Инициализация Firebase
+// 🔐 Firebase init
 let credential;
-
 if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
@@ -32,15 +31,33 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   console.error("❌ Переменная окружения FIREBASE_SERVICE_ACCOUNT_JSON не установлена");
   process.exit(1);
 }
-
 admin.initializeApp({ credential });
 const db = admin.firestore();
 
+// ✨ Функция для аналитической выжимки текста
+async function summarizeText(text) {
+  const prompt = `
+Проанализируй и сделай содержательную выжимку из текста на русском языке. 
+Не сокращай до краткого пересказа. Выдели все ключевые идеи, данные и выводы.
 
+Текст для анализа:
+${text}
+  `;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  return response.choices[0].message.content;
+}
+
+// 🌐 Проверка сервера
 app.get("/", (req, res) => {
   res.send("✅ ScreenApp Webhook is running");
 });
 
+// 📩 Обработка webhook
 app.post("/webhook", async (req, res) => {
   const data = req.body;
   console.log("📩 Webhook received:", JSON.stringify(data, null, 2));
@@ -59,15 +76,19 @@ app.post("/webhook", async (req, res) => {
         console.log("🗒️ Downloading transcript...");
         const resp = await fetch(data.file.transcriptUrl);
         const transcript = await resp.json();
-        content.transcript = transcript.text || "(no text)";
-        console.log("🗣️ Transcript saved.");
+        const rawText = transcript.text || "(no text)";
+        console.log("🗣️ Transcript downloaded.");
+
+        console.log("💡 Generating summary...");
+        const summary = await summarizeText(rawText);
+        content.transcript = summary;
+        console.log("✅ Summary generated.");
       } else {
         content.error = "No transcript found.";
         console.log("⚠️ No transcript in payload.");
       }
 
       fs.writeFileSync(LAST_RESULT, JSON.stringify(content, null, 2));
-
       isReadyToFetchText = true;
       webhookCounter = 0;
 
@@ -79,6 +100,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
+// 📂 Отдача последнего результата
 app.get("/latest", (req, res) => {
   if (isReadyToFetchText) {
     if (fs.existsSync(LAST_RESULT)) {
@@ -92,10 +114,12 @@ app.get("/latest", (req, res) => {
   }
 });
 
+// 🕓 Пауза между письмами
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ✉️ Рассылка по Firestore
 app.get("/share", async (req, res) => {
   try {
     if (!fs.existsSync(LAST_RESULT)) {
@@ -133,7 +157,7 @@ app.get("/share", async (req, res) => {
         console.error(`❌ Failed to send email to ${email}:`, err.message);
       }
 
-      await sleep(500); // ⏱️ пауза 500 мс между письмами
+      await sleep(500); // пауза 500 мс
     }
 
     res.status(200).send({ success: true, message: "Emails sent successfully via Resend." });
@@ -143,7 +167,5 @@ app.get("/share", async (req, res) => {
   }
 });
 
-
+// 🚀 Запуск сервера
 app.listen(PORT, () => console.log(`🚀 Webhook server running on port ${PORT}`));
-
-
