@@ -79,10 +79,9 @@ app.post("/webhook", async (req, res) => {
         const rawText = transcript.text || "(no text)";
         console.log("🗣️ Transcript downloaded.");
 
-        console.log("💡 Generating summary...");
-        const summary = await summarizeText(rawText);
-        content.transcript = summary;
-        console.log("✅ Summary generated.");
+        content.transcript = rawText;
+        console.log("✅ Transcript saved without summarization.");
+
       } else {
         content.error = "No transcript found.";
         console.log("⚠️ No transcript in payload.");
@@ -103,16 +102,13 @@ app.post("/webhook", async (req, res) => {
 // 📂 Отдача последнего результата
 app.get("/latest", (req, res) => {
   if (isReadyToFetchText) {
-    if (fs.existsSync(LAST_RESULT)) {
-      res.sendFile(LAST_RESULT, { root: "." });
-      isReadyToFetchText = false;
-    } else {
-      res.status(404).send({ error: "No data yet." });
-    }
+    isReadyToFetchText = false;
+    res.send("ok");
   } else {
     res.status(403).send({ error: "Data is not ready yet." });
   }
 });
+
 
 // 🕓 Пауза между письмами
 function sleep(ms) {
