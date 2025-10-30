@@ -116,17 +116,15 @@ function sleep(ms) {
 }
 
 // ✉️ Рассылка по Firestore
-app.get("/share", async (req, res) => {
+app.post("/share", async (req, res) => {
   try {
-    if (!fs.existsSync(LAST_RESULT)) {
-      return res.status(404).send({ error: "No data to send yet." });
+    const summaryHtml = req.body.text; // <-- Вот он наш <b><br> текст
+    if (!summaryHtml) {
+      return res.status(400).send({ error: "No text provided" });
     }
 
-    const content = JSON.parse(fs.readFileSync(LAST_RESULT));
     const snapshot = await db.collection("students").get();
-
     if (snapshot.empty) {
-      console.log("⚠️ No students found in Firestore.");
       return res.status(404).send({ error: "No students found." });
     }
 
@@ -135,33 +133,31 @@ app.get("/share", async (req, res) => {
       if (!email) continue;
 
       console.log("📧 Sending email to:", email);
+      
+      const { data: result, error } = await resend.emails.send({
+        from: '"Almavalley Hub" <noreply@smartlesson.online>',
+        to: email,
+        subject: "Новый конспект встречи",
+        html: summaryHtml,   // <-- используем html, не text!
+      });
 
-      try {
-        const { data: result, error } = await resend.emails.send({
-          from: '"Almavalley Hub" <noreply@smartlesson.online>',
-          to: email,
-          subject: "Important Update from Alma Valley",
-          text: content.transcript || "No content available.",
-        });
-
-        if (error) {
-          console.error(`❌ Error sending to ${email}:`, error);
-        } else {
-          console.log(`✅ Email sent to ${email} — ID: ${result.id}`);
-        }
-      } catch (err) {
-        console.error(`❌ Failed to send email to ${email}:`, err.message);
+      if (error) {
+        console.error(`❌ Error sending to ${email}:`, error);
+      } else {
+        console.log(`✅ Email sent: ${result.id}`);
       }
 
-      await sleep(500); // пауза 500 мс
+      await sleep(500);
     }
 
-    res.status(200).send({ success: true, message: "Emails sent successfully via Resend." });
+    res.send({ success: true, message: "Emails sent!" });
+
   } catch (err) {
-    console.error("❌ Error in /share:", err);
-    res.status(500).send({ success: false, error: err.message });
+    console.error("❌ /share error:", err);
+    res.status(500).send({ error: err.message });
   }
 });
+
 
 // 🚀 Запуск сервера
 app.listen(PORT, () => console.log(`🚀 Webhook server running on port ${PORT}`));
